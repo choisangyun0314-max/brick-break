@@ -454,27 +454,38 @@ export default function BrickBreakerGame() {
       const scriptUrl = process.env.NEXT_PUBLIC_GOOGLE_SCRIPT_URL;
       if (!scriptUrl) return;
 
-      fetch(scriptUrl, {
-        method: "POST",
-        mode: "no-cors", // Standard for simple GAS calls
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: username || "ANONYMOUS",
-          time: formatTime(time)
-        }),
-      }).catch(err => console.error("Failed to send record:", err));
+      const submitAndFetch = async () => {
+        setIsLoadingScores(true);
+        try {
+          // 1. 점수 전송
+          await fetch(scriptUrl, {
+            method: "POST",
+            mode: "no-cors", // Standard for simple GAS calls
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              name: username || "ANONYMOUS",
+              time: formatTime(time)
+            }),
+          });
 
-      // Also fetch Top 3
-      setIsLoadingScores(true);
-      fetch(`${scriptUrl}?type=top3`)
-        .then(res => res.json())
-        .then(data => {
+          // 2. 구글 시트 반영 대기 (2초로 넉넉히)
+          await new Promise(resolve => setTimeout(resolve, 2000));
+
+          // 3. Top 3 가져오기 (캐시 방지를 위해 timestamp 추가)
+          // 참고: Google Apps Script는 커스텀 헤더를 넣으면 CORS 에러를 발생시킵니다.
+          const res = await fetch(`${scriptUrl}?type=top3&_t=${Date.now()}`);
+          const data = await res.json();
           if (Array.isArray(data)) setTopScores(data);
-        })
-        .catch(err => console.error("Failed to fetch top scores:", err))
-        .finally(() => setIsLoadingScores(false));
+        } catch (err) {
+          console.error("Failed to process record:", err);
+        } finally {
+          setIsLoadingScores(false);
+        }
+      };
+
+      submitAndFetch();
     }
   }, [gameState, time, username]);
 
